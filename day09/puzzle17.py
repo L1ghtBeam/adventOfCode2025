@@ -23,4 +23,5 @@ def area(i, j, tiles):
 
 
 
-print(main(sys.argv[1]))
+if __name__ == '__main__':
+    print(main(sys.argv[1]))
