@@ -1,4 +1,5 @@
 import heapq
+import random
 import sys
 import time
 
@@ -6,6 +7,7 @@ from day09.puzzle17 import area
 from itertools import pairwise
 
 UPDATE_INTERVAL = 5.0
+MAX_FLOOD_ATTEMPTS = 50000
 
 
 
@@ -22,11 +24,24 @@ def main(infile):
     make_green_outlines(red_tiles, green_tiles)
 
     # find a position inside the area
-    inside_x, inside_y = find_inside_pos(red_tiles)
+    top_left, bottom_right = find_boundary(red_tiles)
 
-    # fill in the inside given this starting position
-    print("Filling inside..")
-    flood_fill(green_tiles, inside_x, inside_y)
+    # fill in the inside given a random starting position
+    print("Attempting fill..")
+    temp_green = set()
+    for i in range(MAX_FLOOD_ATTEMPTS):
+        print(f"Fill attempt {i+1}")
+        sx, sy = random.randint(top_left[0], bottom_right[0]), random.randint(top_left[1], bottom_right[1])
+        if (sx, sy) in green_tiles:
+            continue
+
+        temp_green |= green_tiles
+        if flood_fill(temp_green, sx, sy, top_left, bottom_right):
+            green_tiles |= temp_green
+            break
+        temp_green.clear()
+    else:
+        raise RuntimeError("Too many flood attempts")
 
     # create heap of rectangles sorted by area in non-ascending order so we can search the biggest
     # rectangles first
@@ -76,10 +91,13 @@ def in_green_tiles(red_tiles, green_tiles, i, j):
     return True
 
 
-def flood_fill(tiles, x, y):
+def flood_fill(tiles, x, y, top_left, bottom_right):
     stack = [(x, y)]
     while stack:
         x, y = stack.pop()
+        # boundary checking if we accidentally spilled out of bounds
+        if x < top_left[0] or x > bottom_right[0] or y < top_left[1] or y > bottom_right[1]:
+            return False
         if (x, y) in tiles:
             continue
         tiles.add((x, y))
@@ -87,21 +105,18 @@ def flood_fill(tiles, x, y):
         stack.append((x-1, y))
         stack.append((x, y+1))
         stack.append((x, y-1))
+    return True
 
 
-def find_inside_pos(red_tiles):
-    top_border = None
-    top_border_y = float('inf')
-    for i in range(len(red_tiles) - 1):
-        # check for horizontal line
-        if red_tiles[i][1] != red_tiles[i + 1][1]:
-            continue
-        if red_tiles[i][1] < top_border_y:
-            top_border = i
-            top_border_y = red_tiles[i][1]
-    top_border_x = min(red_tiles[top_border][0], red_tiles[top_border + 1][0])
-    # position (top_border_x+1, top_border_y+1) is PROBABLY inside the area
-    return top_border_x+1, top_border_y+1
+def find_boundary(red_tiles):
+    tl_x, tl_y = float('inf'), float('inf')
+    br_x, br_y = -float('inf'), -float('inf')
+    for x, y in red_tiles:
+        tl_x = min(tl_x, x)
+        tl_y = min(tl_y, y)
+        br_x = max(br_x, x)
+        br_y = max(br_y, y)
+    return (tl_x, tl_y), (br_x, br_y)
 
 
 def make_green_outlines(red_tiles, green_tiles):
