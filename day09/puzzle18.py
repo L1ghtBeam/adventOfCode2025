@@ -1,5 +1,4 @@
 import heapq
-import random
 import sys
 import time
 
@@ -7,7 +6,6 @@ from day09.puzzle17 import area
 from itertools import pairwise
 
 UPDATE_INTERVAL = 5.0
-MAX_FLOOD_ATTEMPTS = 50000
 
 
 
@@ -23,25 +21,15 @@ def main(infile):
     green_tiles = set()
     make_green_outlines(red_tiles, green_tiles)
 
-    # find a position inside the area
-    top_left, bottom_right = find_boundary(red_tiles)
-
-    # fill in the inside given a random starting position
-    print("Attempting fill..")
-    temp_green = set()
-    for i in range(MAX_FLOOD_ATTEMPTS):
-        print(f"Fill attempt {i+1}")
-        sx, sy = random.randint(top_left[0], bottom_right[0]), random.randint(top_left[1], bottom_right[1])
-        if (sx, sy) in green_tiles:
-            continue
-
-        temp_green |= green_tiles
-        if flood_fill(temp_green, sx, sy, top_left, bottom_right):
-            green_tiles |= temp_green
-            break
-        temp_green.clear()
-    else:
-        raise RuntimeError("Too many flood attempts")
+    # find any position with max height
+    top_x, top_y = float('inf'), float('inf')
+    for x, y in red_tiles:
+        if y < top_y:
+            top_x = x
+            top_y = y
+    # the position above this one is guaranteed to be outside the boundary, use this guarantee to form a no touching
+    # zone around our permitted area
+    no_touch_zone = create_boundary(green_tiles, top_x, top_y-1)
 
     # create heap of rectangles sorted by area in non-ascending order so we can search the biggest
     # rectangles first
@@ -58,7 +46,7 @@ def main(infile):
     last_update = time.monotonic()
     while heap:
         neg_area, i, j = heapq.heappop(heap)
-        if in_green_tiles(red_tiles, green_tiles, i, j):
+        if in_green_tiles(red_tiles, no_touch_zone, i, j):
             print(f"Found! Rectangle between {red_tiles[i][0]},{red_tiles[i][1]} and {red_tiles[j][0]},{red_tiles[j][1]}")
             print(-neg_area)
             return 0
@@ -73,8 +61,7 @@ def main(infile):
     return 1
 
 
-
-def in_green_tiles(red_tiles, green_tiles, i, j):
+def in_green_tiles(red_tiles, no_touch_zone, i, j):
     x1, y1 = red_tiles[i]
     x2, y2 = red_tiles[j]
     if x2 < x1:
@@ -83,40 +70,38 @@ def in_green_tiles(red_tiles, green_tiles, i, j):
         y1, y2 = y2, y1
 
     for x in range(x1, x2+1):
-        if (x, y1) not in green_tiles or (x, y2) not in green_tiles:
+        if (x, y1) in no_touch_zone or (x, y2) in no_touch_zone:
             return False
     for y in range(y1, y2+1):
-        if (x1, y) not in green_tiles or (x2, y) not in green_tiles:
+        if (x1, y) in no_touch_zone or (x2, y) in no_touch_zone:
             return False
     return True
 
 
-def flood_fill(tiles, x, y, top_left, bottom_right):
-    stack = [(x, y)]
+def create_boundary(tiles, start_x, start_y):
+    no_touch = set()
+    stack = [(start_x, start_y)]
     while stack:
         x, y = stack.pop()
-        # boundary checking if we accidentally spilled out of bounds
-        if x < top_left[0] or x > bottom_right[0] or y < top_left[1] or y > bottom_right[1]:
-            return False
-        if (x, y) in tiles:
+        # ensure we're not overlapping tiles
+        if (x, y) in tiles or (x, y) in no_touch:
             continue
-        tiles.add((x, y))
-        stack.append((x+1, y))
-        stack.append((x-1, y))
-        stack.append((x, y+1))
-        stack.append((x, y-1))
-    return True
+        # ensure we're bordering on the tiles
+        if not any((bx, by) in tiles for bx, by in [(x-1,y),(x+1,y),(x,y-1),(x,y+1)]):
+            continue
+        no_touch.add((x, y))
 
+        stack.append((x - 1, y - 1))
+        stack.append((x, y - 1))
+        stack.append((x + 1, y - 1))
+        stack.append((x - 1, y))
+        # center
+        stack.append((x + 1, y))
+        stack.append((x - 1, y + 1))
+        stack.append((x, y + 1))
+        stack.append((x + 1, y + 1))
 
-def find_boundary(red_tiles):
-    tl_x, tl_y = float('inf'), float('inf')
-    br_x, br_y = -float('inf'), -float('inf')
-    for x, y in red_tiles:
-        tl_x = min(tl_x, x)
-        tl_y = min(tl_y, y)
-        br_x = max(br_x, x)
-        br_y = max(br_y, y)
-    return (tl_x, tl_y), (br_x, br_y)
+    return no_touch
 
 
 def make_green_outlines(red_tiles, green_tiles):
