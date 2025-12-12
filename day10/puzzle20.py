@@ -1,77 +1,71 @@
 import sys
-from collections import deque
-import time
-
-UPDATE_INTERVAL = 5.0
+from itertools import combinations
 
 
 
 def main(infile):
     output = 0
-    print("Running..")
     with open(infile) as f:
         inputs = []
         for line in f:
-            goal, buttons = parse_machine(line)
-            new_buttons = []
-            for button in buttons:
-                new_button = []
-                for i in range(len(goal)):
-                    new_button.append(int(i in button))
-                new_buttons.append(new_button)
-            inputs.append((goal, new_buttons))
+            inputs.append(parse_machine(line))
 
-        last_update = time.monotonic()
-        for i, input_data in enumerate(inputs, 1):
-            output += min_button_presses(*input_data)
-
-            if time.monotonic() - last_update > UPDATE_INTERVAL:
-                last_update = time.monotonic()
-                print(f"Computed {i}/{len(inputs)}")
+    for buttons, joltage in inputs:
+        button_vecs = [button_vector(button, len(joltage)) for button in buttons]
+        combos = button_combos(button_vecs)
+        cache = {}
+        output += min_button_presses(joltage, combos, cache)
     print(output)
 
 
-def min_button_presses(goal, buttons):
-    init = tuple([0] * len(goal))
-    goal = tuple(goal)
+# bifurcation strategy using recursion with memoization
+# inspired by post by u/tenthmascot
+def min_button_presses(joltage, button_combos, cache):
+    # base cases
+    jolt_tuple = tuple(joltage)
+    if jolt_tuple in cache:
+        return cache[jolt_tuple]
+    if any(x < 0 for x in joltage):
+        return float('inf')
+    if all(x == 0 for x in joltage):
+        return 0
 
-    seen = set()
-    seen.add(init)
-    q = deque()
-    q.append(init)
+    # find all possible ways to reduce joltage into an even subproblem
+    min_cost = float('inf')
+    for vector, cost in button_combos:
+        result = [j - v for j, v in zip(joltage, vector)]
+        # make sure result is all even
+        if any(x % 2 == 1 for x in result):
+            continue
 
-    presses = 1
-    while q:
-        for _ in range(len(q)):
-            node = q.popleft()
-            node_mutable = list(node)
+        # divide by 2
+        for i in range(len(result)):
+            result[i] = result[i] // 2
+        # find minimum way to achieve the half result. This value * 2 = cost of result, and adding on the cost for
+        # this button combo makes our current joltage
+        min_cost = min(min_cost, cost + 2 * min_button_presses(result, button_combos, cache))
 
-            for button in buttons:
-                for i in range(len(node_mutable)):
-                    node_mutable[i] += button[i]
-
-                adj = tuple(node_mutable)
-                if new_joltage_state(adj, seen, goal):
-                    if adj == goal:
-                        return presses
-                    seen.add(adj)
-                    q.append(adj)
-
-                for i in range(len(node_mutable)):
-                    node_mutable[i] -= button[i]
-
-        presses += 1
-
-    raise RuntimeError('no solution')
+    cache[jolt_tuple] = min_cost
+    return min_cost
 
 
-def new_joltage_state(joltage, seen, goal):
-    if joltage in seen:
-        return False
-    for this_j, max_j in zip(joltage, goal):
-        if this_j > max_j:
-            return False
-    return True
+def button_combos(buttons):
+    combos = []
+    for r in range(len(buttons)+1):
+        for vec_list in combinations(buttons, r):
+            result = [0] * len(buttons[0])
+            for vec in vec_list:
+                for i in range(len(result)):
+                    result[i] += vec[i]
+            combos.append((result, r))
+    return combos
+
+
+def button_vector(button, size):
+    vector = [0] * size
+    for i in button:
+        vector[i] = 1
+    return vector
 
 
 def parse_machine(line):
@@ -92,7 +86,7 @@ def parse_machine(line):
     for joltage_str in joltage_strs:
         joltage.append(int(joltage_str))
 
-    return joltage, buttons
+    return buttons, joltage
 
 
 
